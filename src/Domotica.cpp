@@ -120,7 +120,7 @@ void storeValue(vector<Vec4i> *store, double lower, double higher, int value, in
 	}
 }
 
-void pruneRectangles() {
+int pruneRectangles() {
 	// eliminate rectangles inside rectangles
 	rectsInRect = new vector<int> ;
 	for (int i = 0; i < boundRect->size(); i++) {
@@ -145,40 +145,6 @@ void pruneRectangles() {
 			}
 		}
 	}
-
-	/*
-	rectsInRect = new vector<int> ;
-	typedef std::map<int, vector<int> >::iterator it_type;
-	for(it_type iterator = rectStats->begin(); iterator != rectStats->end(); iterator++) {
-		vector<int> rects = iterator->second;
-		for(int rectOut = 0; rectOut < rects.size(); rectOut++) {
-			for(int rectIn = 0; rectIn < rects.size(); rectIn++) {
-				int rectIndexOut = rects[rectOut];
-				int rectIndexIn = rects[rectIn];
-				if (rectIndexOut != rectIndexIn) {
-					//cout << "Confront " << rectIndexOut << " with " << rectIndexIn << endl;
-					Point tlOut = boundRect->at(rectIndexOut).tl();
-					Point tlIn = boundRect->at(rectIndexIn).tl();
-					Point tlIn2 = boundRect->at(rectIndexIn).tl();
-					Point brIn = boundRect->at(rectIndexIn).br();
-
-					tlIn2.y = boundRect->at(rectIndexIn).br().y;
-					if (boundRect->at(rectIndexOut).contains(tlIn) ||
-							boundRect->at(rectIndexOut).contains(tlIn2) ||
-							boundRect->at(rectIndexOut).contains(brIn)) {
-						if (debugLevel > 3) {
-							cout << rectIndexOut << " contains " << rectIndexIn << endl;
-						}
-						rectsInRect->push_back(rectIndexIn);
-					}
-				}
-			}
-		}
-	}
-	*/
-}
-
-int selectNumberRectangles() {
 	typedef std::map<int, vector<int> >::iterator it_type;
 	int nRect = 0;
 	ocrRect = new vector<int>;
@@ -582,8 +548,7 @@ int analyze(int userThreshold) {
 		return(-1);
 	}
 	getRectStats();
-	pruneRectangles();
-	int nRect = selectNumberRectangles();
+	int nRect = pruneRectangles();
 
 	if (nRect > 0) {
 		std::string result = ocrRectangles();
