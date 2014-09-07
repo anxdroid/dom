@@ -25,9 +25,9 @@ vector<Vec4i> *heights;
 vector<Vec4i> *widths;
 
 std::map<int, vector<int> > *rectStats;
-
-
 vector<int> *rectsInRect;
+
+vector<int> *ocrRect;
 
 void loadImage(char* fileName) {
 	if (debugLevel > 0) {
@@ -178,43 +178,44 @@ void pruneRectangles() {
 	*/
 }
 
-string ocrRectangles() {
-	std::map<int, int> ocrFinal;
+int selectNumberRectangles() {
 	typedef std::map<int, vector<int> >::iterator it_type;
 	int nRect = 0;
-	vector<int> ocrRect;
-	int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+	ocrRect = new vector<int>;
 	double fontScale = 0.5;
 	for(it_type iterator = rectStats->begin(); iterator != rectStats->end() && nRect < 9; iterator++) {
 		Scalar color = Scalar( 255, 255, 255 );
 		for( int i = 0; i< iterator->second.size(); i++ ) {
-			if (std::find(ocrRect.begin(), ocrRect.end(), iterator->second[i]) == ocrRect.end()) {
+			if (std::find(ocrRect->begin(), ocrRect->end(), iterator->second[i]) == ocrRect->end()) {
 				nRect++;
 				if (std::find(rectsInRect->begin(), rectsInRect->end(), iterator->second[i]) == rectsInRect->end()) {
-					ocrRect.push_back(iterator->second[i]);
-					if (debugLevel > 2) {
+					ocrRect->push_back(iterator->second[i]);
+					rectangle(postProcImage, boundRect->at(iterator->second[i]).tl(), boundRect->at(iterator->second[i]).br(), Scalar(255,255,255), 2, 8, 0 );
+					if (debugLevel > 3) {
 						cout << iterator->second[i] << " not contained. Rectinrect [" << rectsInRect->size() << "]" << endl;
-						//cout << boundRect->at(iterator->second[i]).tl().x << "," << boundRect->at(iterator->second[i]).tl().y << endl;
-						//cout << boundRect->at(iterator->second[i]).br().x << "," << boundRect->at(iterator->second[i]).br().y << endl;
-						//cout << "Val " << iterator->first << " rect " << iterator->second[i] << " [" << nRect << "]" << endl;
+						cout << boundRect->at(iterator->second[i]).tl().x << "," << boundRect->at(iterator->second[i]).tl().y << endl;
+						cout << boundRect->at(iterator->second[i]).br().x << "," << boundRect->at(iterator->second[i]).br().y << endl;
+						cout << "Val " << iterator->first << " rect " << iterator->second[i] << " [" << nRect << "]" << endl;
 						Point textPos = boundRect->at(iterator->second[i]).br();
 						textPos.y += 12;
 						textPos.x =boundRect->at(iterator->second[i]).tl().x;
-						rectangle(postProcImage, boundRect->at(iterator->second[i]).tl(), boundRect->at(iterator->second[i]).br(), Scalar(255,255,255), 2, 8, 0 );
 						std::ostringstream stringStream;
 						stringStream << iterator->second[i];
 						std::string text = stringStream.str();
-						//putText(postProcImage, text, textPos, fontFace, fontScale, Scalar(255,255,255), 1, 8);
+						int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+						putText(postProcImage, text, textPos, fontFace, fontScale, Scalar(255,255,255), 1, 8);
 					}
 				}
 			}
 		}
 	}
+	return nRect;
+}
 
-
-
-	for (int i = 0; i < ocrRect.size(); i++) {
-		Rect origRect = boundRect->at(ocrRect[i]);
+string ocrRectangles() {
+	std::map<int, int> ocrFinal;
+	for (int i = 0; i < ocrRect->size(); i++) {
+		Rect origRect = boundRect->at(ocrRect->at(i));
 		int countOcc = 0;
 		std::map<int, int> ocrValues;
 		for (int horizOffset = -2; horizOffset <= 2; horizOffset+=2) {
@@ -261,8 +262,32 @@ string ocrRectangles() {
 				Rect rectMoved(x1, y1, x2-x1, y2-y1);
 				Mat imageRoi = preProcImage(rectMoved);
 
+
+
+			    // Pass it to Tesseract API
+				tesseract::TessBaseAPI tess;
+				tess.Init(NULL, "eng", tesseract::OEM_DEFAULT);
+				tess.SetVariable("tessedit_char_whitelist", "0123456789");
+				tess.SetPageSegMode(tesseract::PSM_SINGLE_CHAR);
+				//tess.SetImage((uchar*)imageRoi.data, imageRoi.cols, imageRoi.rows, 1, imageRoi.cols);
+				tess.TesseractRect( imageRoi.data, 1, imageRoi.step1(), 0, 0, imageRoi.cols, imageRoi.rows);
+				char* out = tess.GetUTF8Text();
+				//std::cout << ocrRect->at(i) << " tesseract output: " << out << std::endl;
+				if (strlen(out) > 0) {
+					int num = atoi(out);
+					if (ocrValues.find( num ) != ocrValues.end()) {
+						ocrValues[num]++;
+					}else{
+						ocrValues[num] = 1;
+					}
+					if (debugLevel > 3) {
+						cout << "Rect " << ocrRect->at(i) << " ocr " << num << " [" << ocrValues[num] << "] " << horizOffset << "x" << vertOffset << endl;
+					}
+				}
+				delete[] out;
+/*
 				std::ostringstream stringStream2;
-				stringStream2 << "tmp/number" << ocrRect[i] << "_" << horizOffset << "x" << vertOffset << ".tiff";
+				stringStream2 << "tmp/number" << ocrRect->at(i) << "_" << horizOffset << "x" << vertOffset << ".tiff";
 				std::string filename = stringStream2.str();
 				imwrite( filename.c_str(), imageRoi );
 
@@ -296,13 +321,14 @@ string ocrRectangles() {
 						ocrValues[num] = 1;
 					}
 					if (debugLevel > 3) {
-						cout << "Rect " << ocrRect[i] << " ocr " << num << " [" << ocrValues[num] << "] " << horizOffset << "x" << vertOffset << endl;
+						cout << "Rect " << ocrRect->at(i) << " ocr " << num << " [" << ocrValues[num] << "] " << horizOffset << "x" << vertOffset << endl;
 					}
 				}
 
 				if (horizOffset != 0 || vertOffset != 0) {
 					remove(ocrOut.c_str());
 				}
+*/
 
 			}
 		}
@@ -321,7 +347,7 @@ string ocrRectangles() {
 			}
 		}
 		if (debugLevel > 0) {
-			cout << ocrRect[i] << " Most frequent scan " << maxValI << " [" << maxVal << "]" << endl;
+			cout << ocrRect->at(i) << " Most frequent scan " << maxValI << " [" << maxVal << "]" << endl;
 		}
 		int maxSecVal = -1;
 		int maxSecValI = -1;
@@ -334,19 +360,20 @@ string ocrRectangles() {
 
 		double perc = 100 * maxVal / countOcc;
 		std::ostringstream stringStream5;
-		stringStream5 << ocrRect[i] << " " << maxValI << " [" << perc << "%]";
+		stringStream5 << ocrRect->at(i) << " " << maxValI << " [" << perc << "%]";
 		if (maxSecVal > 0) {
 			perc = 100 * maxSecVal / countOcc;
 			stringStream5 << " " << maxSecValI << " [" << perc << "%]";
 		}
 		std::string ocrOutImg = stringStream5.str();
 
-		Point tl = boundRect->at(ocrRect[i]).tl();
-		Point br = boundRect->at(ocrRect[i]).br();
-		cout << "Rect " << ocrRect[i] << " @ " << tl.x << "," << tl.y << "-" << br.x << "," << br.y << endl;
+		Point tl = boundRect->at(ocrRect->at(i)).tl();
+		Point br = boundRect->at(ocrRect->at(i)).br();
+		cout << "Rect " << ocrRect->at(i) << " @ " << tl.x << "," << tl.y << "-" << br.x << "," << br.y << endl;
 		br.y += 18;
 		br.x = tl.x;
 		cout << "\t" << ocrOutImg << " @ " << br.x << "," << br.y << endl;
+		int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
 		putText(postProcImage, ocrOutImg, br, fontFace, 0.5, Scalar::all(255), 1, 8);
 		ocrFinal[tl.x] = maxValI;
 	}
@@ -603,17 +630,21 @@ int analyze(int userThreshold) {
 	}
 	getRectStats();
 	pruneRectangles();
-	std::string result = ocrRectangles();
-	std::ostringstream stringStreamFinal;
-	stringStreamFinal << "results/" << result << "_" << fileName << "-" << userThreshold << ".tiff";
-	std::string filenameFinal = stringStreamFinal.str();
-	cout << "Writing " << filenameFinal << endl;
-	imwrite( filenameFinal.c_str(), postProcImage);
+	int nRect = selectNumberRectangles();
 
-	if (debugLevel > 3) {
-		namedWindow("postProcImage", CV_WINDOW_AUTOSIZE);
-		imshow("postProcImage", postProcImage);
-		waitKey();
+	if (nRect > 0) {
+		std::string result = ocrRectangles();
+		std::ostringstream stringStreamFinal;
+		stringStreamFinal << "results/" << result << "_" << fileName << "-" << userThreshold << ".tiff";
+		std::string filenameFinal = stringStreamFinal.str();
+		cout << "Writing " << filenameFinal << endl;
+		imwrite( filenameFinal.c_str(), postProcImage);
+
+		if (debugLevel > 3) {
+			namedWindow("postProcImage", CV_WINDOW_AUTOSIZE);
+			imshow("postProcImage", postProcImage);
+			waitKey();
+		}
 	}
 	return(0);
 }

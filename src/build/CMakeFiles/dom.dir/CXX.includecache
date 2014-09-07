@@ -17,6 +17,8 @@ opencv2/imgproc/imgproc.hpp
 /home/anto/Domotica/src/opencv2/imgproc/imgproc.hpp
 opencv2/core/core.hpp
 /home/anto/Domotica/src/opencv2/core/core.hpp
+tesseract/baseapi.h
+-
 stdio.h
 -
 stdlib.h
