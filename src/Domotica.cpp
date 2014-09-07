@@ -14,7 +14,7 @@ using namespace std;
 cv::Mat sourceImage, preProcImage, postProcImage, contImage;
 char* fileName;
 int userThreshold;
-int debugLevel = 3;
+int debugLevel = 1;
 RNG rng(12345);
 
 vector<Rect> *boundRect;
@@ -261,8 +261,6 @@ string ocrRectangles() {
 
 				Rect rectMoved(x1, y1, x2-x1, y2-y1);
 				Mat imageRoi = preProcImage(rectMoved);
-
-
 
 			    // Pass it to Tesseract API
 				tesseract::TessBaseAPI tess;
@@ -589,6 +587,7 @@ int analyze(int userThreshold) {
 
 	if (nRect > 0) {
 		std::string result = ocrRectangles();
+		cout << "Result: " << result << endl;
 		std::ostringstream stringStreamFinal;
 		stringStreamFinal << "results/" << result << "_" << fileName << "-" << userThreshold << ".tiff";
 		std::string filenameFinal = stringStreamFinal.str();
@@ -613,6 +612,7 @@ int main( int argc, char** argv ) {
 	loadImage(fileName);
 	preProcessImage();
 	userThreshold = atoi(argv[2]);
+	debugLevel = atoi(argv[3]);
 	if (userThreshold == -1) {
 		for (int t = 0; t <= 100; t+=10) {
 			if (debugLevel > 0) {
