@@ -1,0 +1,1 @@
+/home/anto/Domotica/src/CMakeFiles/dom.dir
