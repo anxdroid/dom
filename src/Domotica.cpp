@@ -219,7 +219,7 @@ string ocrRectangles() {
 		int countOcc = 0;
 		std::map<int, int> ocrValues;
 		for (int horizOffset = -2; horizOffset <= 2; horizOffset+=2) {
-			for (int vertOffset = -4; vertOffset <= 4; vertOffset+=2) {
+			for (int vertOffset = 0; vertOffset <= 0; vertOffset+=2) {
 				countOcc++;
 				int x1 = origRect.tl().x;
 				int y1 = origRect.tl().y;
@@ -285,51 +285,6 @@ string ocrRectangles() {
 					}
 				}
 				delete[] out;
-/*
-				std::ostringstream stringStream2;
-				stringStream2 << "tmp/number" << ocrRect->at(i) << "_" << horizOffset << "x" << vertOffset << ".tiff";
-				std::string filename = stringStream2.str();
-				imwrite( filename.c_str(), imageRoi );
-
-				std::ostringstream stringStream3;
-				stringStream3 << "tesseract -psm 10 " << filename << " " << filename << " nobatch digits 1>/dev/null 2>&1";
-				std::string cmd = stringStream3.str();
-				system(cmd.c_str());
-
-				if (horizOffset != 0 || vertOffset != 0) {
-					remove(filename.c_str());
-				}
-
-
-				ifstream in_stream;
-				string line;
-
-				std::ostringstream stringStream4;
-				stringStream4 << filename << ".txt";
-				std::string ocrOut = stringStream4.str();
-
-				in_stream.open(ocrOut.c_str());
-				while(!in_stream.eof()) {
-					in_stream >> line;
-				}
-				in_stream.close();
-				if (!line.empty()) {
-					int num = atoi(line.c_str());
-					if (ocrValues.find( num ) != ocrValues.end()) {
-						ocrValues[num]++;
-					}else{
-						ocrValues[num] = 1;
-					}
-					if (debugLevel > 3) {
-						cout << "Rect " << ocrRect->at(i) << " ocr " << num << " [" << ocrValues[num] << "] " << horizOffset << "x" << vertOffset << endl;
-					}
-				}
-
-				if (horizOffset != 0 || vertOffset != 0) {
-					remove(ocrOut.c_str());
-				}
-*/
-
 			}
 		}
 		if (debugLevel > 3) {
