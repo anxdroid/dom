@@ -505,241 +505,149 @@ void analyzeRectangles(double minPerc = 0.01, double maxPerc = 0.3, int minWidth
 
 }
 
-void mergeRects2(int nRect = -1, int nLevel = 0) {
-	if (nRect == -1) {
-		for (int i = 0 ; i < mergedRect->size(); i++) {
-			if (hierarchy[i][2] > 0 && hierarchy[i][3] < 0) {
-				//cout << "Calling with value " << i << endl;
- 				mergeRects2(i, nLevel+1);
+void mergeRects() {
+	// pruning rectangles bigger than 90% of image size
+	for (int i = 0; i < mergedRect->size(); i++) {
+		int imgArea = preProcImage.rows * preProcImage.cols;
+		if (mergedRect->at(i).area() > 0.9 * imgArea) {
+			if (debugLevel > 1) {
+				cout << i << " too big !" << endl;
 			}
-		}
-	}else{
-		//cout << "Called with value " << nRect << endl;
-		int area = boundRect->at(nRect).area();
-		int areas = 0;
-		int nextRect = hierarchy[nRect][2];
-		int nRects = 0;
-		vector<int> childrenRect;
-		while (nextRect > 0) {
-			childrenRect.push_back(nextRect);
-			if (hierarchy[nextRect][3] > 0) {
-				mergeRects2(nextRect, nLevel+1);
-			}
-			//Rect rect = boundRect->at(nextRect);
-			//areas += rect.area();
-			//nRects++;
-			nextRect = hierarchy[nextRect][0];
-		}
-
-
-		mergedHierarchy = new std::map<int, vector<int> >;
-		int nMerged;
-		do {
-			nMerged = 0;
-			for( int i = 0; i < childrenRect.size(); i++ ) {
-				for( int j = 0; j < childrenRect.size(); j++ ) {
-					//cout << i << " " << j << endl;
-					if (i != j && childrenRect[i] >= 0 && childrenRect[j] >= 0) {
-						Rect a = mergedRect->at(childrenRect[i]);
-						Rect b = mergedRect->at(childrenRect[j]);
-						if (a.area() > 0 && b.area() > 0) {
-							int dist1 = abs(b.tl().x - a.br().x);
-							int dist = dist1;
-							int dist2 = abs(a.tl().x - b.br().x);
-							if (dist2 < dist) {
-								dist = dist2;
-							}
-							int dist3 = abs(b.tl().y - a.br().y);
-							if (dist3 < dist) {
-								dist = dist3;
-							}
-							int dist4 = abs(a.tl().y - b.br().y);
-							if (dist4 < dist) {
-								dist = dist4;
-							}
-
-
-							if (dist == 1 && dist > 0) {
-								//cout << childrenRect[i] << " - " << childrenRect[j] << " dist " << dist << "(" << dist1 << "," << dist2 << "," << dist3 << "," << dist4 << ")" << endl;
-								int x = min(a.tl().x, b.tl().x);
-								int y = min(a.tl().y, b.tl().y);
-								int w = max(a.br().x, b.br().x) - x;
-								int h = max(a.br().y, b.br().y) - y;
-								Rect newRect = Rect(x, y, w, h);
-
-								int bigI = i;
-								int smallI = j;
-								if (b.area() > a.area()) {
-									bigI = j;
-									smallI = i;
-								}
-
-								mergedRect->at(childrenRect[bigI]) = Rect(x, y, w, h);
-								mergedRect->at(childrenRect[smallI]) = Rect(0,0,0,0);
-								childrenRect[smallI] = -1;
-								//cout << "i = " << childrenRect[i] << " j = " << childrenRect[j] << endl;
-								nMerged++;
-							}
-						}
-					}
-				}
-			}
-			//cout << "Merged " << nMerged << " rect" << endl;
-		}while(nMerged > 0);
-
-
-		for(int i = 0; i < childrenRect.size(); i++ ) {
-			for(int j = 0; j < childrenRect.size(); j++ ) {
-				if (i != j && childrenRect[i] >= 0 && childrenRect[j] >= 0) {
-				if (childrenRect[i] == 194 || childrenRect[j] == 194) {
-					Rect rectI = mergedRect->at(childrenRect[i]);
-					Rect rectJ = mergedRect->at(childrenRect[j]);
-
-					if (rectJ.tl().y < rectI.br().y) {
-						bool overlap = false;
-						if (rectJ.tl().x > rectI.tl().x && rectJ.tl().x < rectI.br().x) {
-							//cout << "Overlap ! " << childrenRect[i] << " with " << childrenRect[j] << " " << rectI.tl() << "," << rectI.br() << " - " << rectJ.tl() << "," << rectJ.br() << endl;
-							overlap = true;
-						}
-						if (rectJ.br().x > rectI.tl().x && rectJ.br().x < rectI.br().x) {
-							//cout << "Overlap ! " << childrenRect[i] << " with " << childrenRect[j] << " " << rectI.tl() << "," << rectI.br() << " - " << rectJ.tl() << "," << rectJ.br() << endl;
-							overlap = true;
-						}
-						if (overlap) {
-							//mergedRect->at(childrenRect[i]).br().y = rectJ.tl().y;
-							//mergedRect->at(childrenRect[j]).tl().y = rectI.br().y;
-
-							//mergedRect->at(childrenRect[i]) = Rect(rectI.tl().x, rectI.tl().y, rectI.width, rectJ.tl().y - rectI.tl().y);
-							//mergedRect->at(childrenRect[j]) = Rect(rectJ.tl().x, rectI.br().y, rectJ.width, rectI.br().y - rectJ.br().y);
-							rectangle(preProcImage, mergedRect->at(childrenRect[i]).tl(), mergedRect->at(childrenRect[i]).br(), Scalar(255,255,255), 1, 8, 0 );
-							//rectangle(preProcImage, mergedRect->at(childrenRect[j]).tl(), mergedRect->at(childrenRect[j]).br(), Scalar(255,255,255), 2, 8, 0 );
-
-							//rectI = mergedRect->at(childrenRect[i]);
-							//rectJ = mergedRect->at(childrenRect[j]);
-							//cout << "New rects  " << rectI.tl() << "," << rectI.br() << " - " << rectJ.tl() << "," << rectJ.br() << endl;
-
-						}
-					}
-				}
-				}
-			}
-		}
-
-		for(int i = 0; i < childrenRect.size(); i++ ) {
-			//cout << i << " " << j << endl;
-			if (childrenRect[i] >= 0) {
-				//cout << childrenRect[i] << endl;
-				Rect rect = boundRect->at(childrenRect[i]);
-				areas += rect.area();
-				nRects++;
-			}
-		}
-		if (nRects > 0) {
-			double ratioAreas = 100 * areas/area;
-			double ratioAreasByRect = ratioAreas / nRects;
-			cout << nRect << " level " << nLevel << " has " << nRects << " subrectangles with " << ratioAreas << "% coverage [avg " << ratioAreasByRect << "%]" << endl;
+			mergedRect->at(i) = Rect(0,0,0,0);
 		}
 	}
-}
 
-void mergeRects(int minDist) {
-	if (debugLevel > 1) {
-		cout << "Merging rectangles..." << endl;
-	}
-	int nMergedRecs = 0;
-	int nMerged;
+	// finding rectangles with maximum distance 10px by checking vertex euclidean distance
 	mergedHierarchy = new std::map<int, vector<int> >;
+	int nMerged;
 	do {
-		cout << "Doing..." << endl;
 		nMerged = 0;
 		for( int i = 0; i < mergedRect->size(); i++ ) {
 			for( int j = 0; j < mergedRect->size(); j++ ) {
 				//cout << i << " " << j << endl;
-				if (i != j) {
+				if (i != j && mergedRect->at(i).area() >= 0 && mergedRect->at(j).area() >= 0) {
 					Rect a = mergedRect->at(i);
 					Rect b = mergedRect->at(j);
 					if (a.area() > 0 && b.area() > 0) {
-						int dist1 = abs(b.tl().x - a.br().x);
-						int dist = dist1;
-						int dist2 = abs(a.tl().x - b.br().x);
-						if (dist2 < dist) {
-							dist = dist2;
-						}
-						int dist3 = abs(b.tl().y - a.br().y);
-						if (dist3 < dist) {
-							dist = dist3;
-						}
-						int dist4 = abs(a.tl().y - b.br().y);
-						if (dist4 < dist) {
-							dist = dist4;
-						}
+						Point br2 = a.br();
+						br2.y = a.tl().y;
+						Point tl2 = b.tl();
+						tl2.y = a.br().y;
+						double distH1 = cv::norm(br2 - b.tl());
+						double distH2 = cv::norm(a.br() - tl2);
+
+						Point tl3 = a.tl();
+						tl3.x = a.br().x;
+						Point br3 = b.br();
+						br3.x = b.tl().x;
+
+						double distV1 = cv::norm(tl3 - b.tl());
+						double distV2 = cv::norm(a.br() - tl3);
 
 
-						if (dist <= minDist) {
-							cout << i << " - " << j << " dist " << dist << "(" << dist1 << "," << dist2 << "," << dist3 << "," << dist4 << ")" << endl;
+						double dist = min (((distH1+distH2) / 2), ((distV1+distV2) / 2));
+
+						if (dist < 10 && dist > 0) {
+
 							int x = min(a.tl().x, b.tl().x);
 							int y = min(a.tl().y, b.tl().y);
 							int w = max(a.br().x, b.br().x) - x;
 							int h = max(a.br().y, b.br().y) - y;
-							mergedRect->at(i) = Rect(x, y, w, h);
-							mergedRect->at(j) = Rect(0,0,0,0);
-							if (mergedHierarchy->find(i) == mergedHierarchy->end()) {
-								mergedHierarchy->insert(std::pair<int, vector<int> >(i, vector<int>()));
-								//cout << "Inserting pair " << i << ", " << j  << "[" << mergedHierarchy->at(i).size() << "]" << endl;
+							Rect newRect = Rect(x, y, w, h);
+
+							int bigI = i;
+							int smallI = j;
+							if (b.area() > a.area()) {
+								bigI = j;
+								smallI = i;
 							}
-							mergedHierarchy->at(i).push_back(j);
-							//(*mergedHierarchy)[i].push_back(j);
-							cout << "Updating " << i << " with " << j << "[" << mergedHierarchy->at(i).size() << "]" << endl;
-							//rectangle(sourceImage, mergedRect->at(i).tl(), mergedRect->at(i).br(), Scalar(255,255,255), 3, 8, 0 );
+							if (mergedHierarchy->find(bigI) == mergedHierarchy->end()) {
+								mergedHierarchy->insert(std::pair<int, vector<int> >(bigI, vector<int>()));
+							}
+							mergedRect->at(bigI) = Rect(x, y, w, h);
+							mergedRect->at(smallI) = Rect(0,0,0,0);
+							if (debugLevel > 4) {
+								cout << bigI << " - " << smallI << " dist " << dist << " H: " << ((distH1+distH2) / 2) << " V: " << ((distV1+distV2) / 2) << endl;
+							}
 							nMerged++;
-							nMergedRecs++;
+
 						}
 					}
 				}
 			}
 		}
+		if (debugLevel > 2) {
+			cout << "Merged " << nMerged << " rect" << endl;
+		}
 	}while(nMerged > 0);
+
+	// building a map of enclosed original rectangles inside merged ones
+	for (int i = 0; i < mergedRect->size(); i++) {
+		if (mergedRect->at(i).area() > 0) {
+
+			for (int j = 0; j < boundRect->size(); j++) {
+				if (i != j) {
+					if (mergedRect->at(i).contains(boundRect->at(j).tl()) &&
+							mergedRect->at(i).contains(boundRect->at(j).br())) {
+						if (debugLevel > 2) {
+							cout << i << " contains " << j << endl;
+						}
+						if (mergedHierarchy->find(i) == mergedHierarchy->end()) {
+							mergedHierarchy->insert(std::pair<int, vector<int> >(i, vector<int>()));
+							if (debugLevel > 2) {
+								cout << "Inserting pair " << i << ", " << j  << "[" << mergedHierarchy->at(i).size() << "]" << endl;
+							}
+						}
+						mergedHierarchy->at(i).push_back(j);
+					}
+				}
+			}
+
+		}
+	}
 }
 
 Rect detectContainer() {
-	double maxAvgArea = 0;
-	int maxAvgAreaI = -1;
-
-	int maxRectCount = 0;
-	int maxRectCountI = -1;
-
-	for( int i = 0; i < mergedRect->size(); i++ ) {
-		if (mergedRect->at(i).area() > 0 && mergedHierarchy->find(i) != mergedHierarchy->end()) {
-			//rectangle(sourceImage, mergedRect->at(i).tl(), mergedRect->at(i).br(), Scalar(255,255,255), 3, 8, 0 );
-			cout << i << " area " << mergedRect->at(i).area() << " hierarchy: " <<  mergedHierarchy->at(i).size() << endl;
-			double avgArea = 0;
-			int rectCount = 0;
-			for (int j = 0; j < mergedHierarchy->at(i).size(); j++) {
-				int nRect = mergedHierarchy->at(i).at(j);
-				if ((boundRect->at(nRect)).area() > 0) {
-					cout << "\t" << nRect << " area " << (boundRect->at(nRect)).area() << " hierarchy " << hierarchy[nRect] << endl;
-					avgArea += (boundRect->at(nRect)).area();
-					rectCount++;
+	// finding the rectangle with the most enclosed original rects AND the highest absolute coverage
+	int maxNRect = 0;
+	int maxArea = 0;
+	int maxNRectI = -1;
+	int maxAreaI = -1;
+	for (int i = 0; i < mergedRect->size(); i++) {
+		if (mergedHierarchy->find(i) != mergedHierarchy->end()) {
+			Rect rect = mergedRect->at(i);
+			if (rect.area() > 0 && mergedHierarchy->at(i).size() > 0) {
+				int areas = 0;
+				for(int j = 0; j < mergedHierarchy->at(i).size(); j++) {
+					Rect rect = boundRect->at(mergedHierarchy->at(i).at(j));
+					areas += rect.area();
 				}
-			}
-			avgArea /= rectCount;
-			if (avgArea > maxAvgArea) {
-				maxAvgArea = avgArea;
-				maxAvgAreaI = i;
-			}
-			if (rectCount > maxRectCount) {
-				maxRectCount = rectCount;
-				maxRectCountI = i;
+
+
+				//rectangle(preProcImage, rect.tl(), rect.br(), Scalar(100,100,100), 2, 8, 0 );
+				if (rect.area() > maxArea) {
+					maxArea = areas;
+					maxAreaI = i;
+				}
+				if (mergedHierarchy->at(i).size() > maxNRect) {
+					maxNRect = mergedHierarchy->at(i).size();
+					maxNRectI = i;
+				}
+
+				double perc = 100 * areas / rect.area();
+				if (debugLevel > 2) {
+					cout << "Rectangle " << i << " has area " << rect.area() << " [" << perc << "% coverage] and " << mergedHierarchy->at(i).size() << " rectangles" << endl;
+				}
 			}
 		}
 	}
-	cout << "maxAvgAreaI " << maxAvgAreaI << " maxRectCountI " << maxRectCountI << endl;
-	if ((maxAvgAreaI == maxRectCountI) && (maxAvgAreaI != -1)) {
-		//rectangle(preProcImage, mergedRect->at(maxAvgAreaI).tl(), mergedRect->at(maxAvgAreaI).br(), Scalar(255,255,255), 3, 8, 0 );
-		//namedWindow("preProcImage", CV_WINDOW_AUTOSIZE);
-		//imshow("preProcImage", preProcImage);
-		//waitKey(0);
-		return mergedRect->at(maxAvgAreaI);
+	if (debugLevel > 1) {
+		cout << "Area " << maxAreaI << " Rectangles " << maxNRectI << endl;
+	}
+	if (maxAreaI == maxNRectI) {
+		Rect rect = mergedRect->at(maxAreaI);
+		rectangle(preProcImage, rect.tl(), rect.br(), Scalar(255,255,255), 4, 8, 0 );
+		return rect;
 	}
 	return Rect(0,0,0,0);
 }
@@ -752,7 +660,7 @@ void detectContours(int userThreshold) {
 		cout << "Detecting contours..." << endl;
 	}
 	threshold( preProcImage, threshold_output, userThreshold, 255, THRESH_BINARY );
-	findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
+	findContours( threshold_output, contours, hierarchy, RETR_LIST, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
 	vector<vector<Point> > contours_poly( contours.size() );
 	postProcImage = preProcImage.clone();
 	boundRect = new vector<Rect>();
@@ -764,6 +672,16 @@ void detectContours(int userThreshold) {
 		Rect rect = boundingRect( Mat(contours_poly[i]));
 		boundRect->push_back(rect);
 		mergedRect->push_back(rect);
+		Point br = rect.br();
+		br.y -= 20;
+		int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+		std::ostringstream stringStream;
+		stringStream << i;
+		if (debugLevel > 1) {
+			//putText(preProcImage, stringStream.str(), br, fontFace, 0.5, Scalar(255,255,255), 0.5, 8);
+			rectangle(preProcImage, rect.tl(), rect.br(), Scalar(100,100,100), 1, 8, 0 );
+		}
+
 	}
 
 }
@@ -771,10 +689,8 @@ void detectContours(int userThreshold) {
 int analyze(int userThreshold) {
 	detectContours(userThreshold);
 	rectNotAreas = new vector<int>(boundRect->size());
-	mergeRects2();
-	//mergeRects(6);
-
-	//Rect container = detectContainer();
+	mergeRects();
+	Rect container = detectContainer();
 	//preProcImage = sourceImage(container);
 
 	return 0;
@@ -822,6 +738,9 @@ void deskew(double angle) {
 }
 
 double hough(int userThreshold) {
+	if (debugLevel > 0) {
+		cout << "Detecting skew... [thresh " << userThreshold << "]" << endl;
+	}
 	Mat tmp = sourceImage.clone();
     Canny( tmp, tmp, userThreshold, 200, 3 );
     vector<Vec4i> lines;
@@ -858,7 +777,7 @@ double hough(int userThreshold) {
     float m12 = sqrt( dx21*dx21 + dy21*dy21 );
     float m13 = sqrt( dx31*dx31 + dy31*dy31 );
     double theta = acos( (dx21*dx31 + dy21*dy31) / (m12 * m13) ) * 180 / CV_PI;
-	if (debugLevel > 3) {
+	if (debugLevel > 2) {
 		namedWindow("tmp", CV_WINDOW_AUTOSIZE);
 		imshow("tmp", tmp);
 		waitKey(0);
@@ -867,18 +786,16 @@ double hough(int userThreshold) {
 }
 
 void preProcessImage(int userThreshold) {
-
-	if (debugLevel > 0) {
-		cout << "Detecting skew..." << endl;
-	}
 	double angle = hough(userThreshold);
 
 	cvtColor( sourceImage, preProcImage, CV_BGR2GRAY );
 	blur( preProcImage, preProcImage, Size(3,3) );
+
 	if (debugLevel > 0) {
 		cout << "\tSkew angle :" << angle << endl;
 	}
 	deskew(angle);
+
 }
 
 /** @function main */

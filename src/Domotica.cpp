@@ -11,13 +11,15 @@
 using namespace cv;
 using namespace std;
 
-cv::Mat sourceImage, preProcImage, postProcImage, contImage;
+cv::Mat sourceImage, preProcImage, postProcImage, rotatedImage;
 char* fileName;
 int userThreshold;
 int debugLevel = 1;
 RNG rng(12345);
 
 vector<Rect> *boundRect;
+vector<Rect> *mergedRect;
+
 vector<Rect> *suitableBoundRect;
 vector<Vec4i> *middles;
 vector<Vec4i> *tops;
@@ -26,8 +28,9 @@ vector<Vec4i> *widths;
 
 std::map<int, vector<int> > *rectStats;
 vector<int> *rectsInRect;
-
 vector<int> *ocrRect;
+
+std::map<int, vector<int> > *mergedHierarchy;
 
 void loadImage(char* fileName) {
 	if (debugLevel > 0) {
@@ -35,15 +38,138 @@ void loadImage(char* fileName) {
 		cout << "Loading image " << fileName << "..." << endl;
 		cout << "==================================================" << endl;
 	}
-	sourceImage = imread(fileName, 1 );
+	sourceImage = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE );
 }
 
-void preProcessImage() {
+void deskew(double angle) {
+	//cv::bitwise_not(preProcImage, preProcImage);
+
+	std::vector<cv::Point> points;
+	cv::Mat_<uchar>::iterator it = sourceImage.begin<uchar>();
+	cv::Mat_<uchar>::iterator end = sourceImage.end<uchar>();
+	for (; it != end; ++it)
+	if (*it)
+	points.push_back(it.pos());
+
+	cv::RotatedRect box = cv::minAreaRect(cv::Mat(points));
+	cv::Mat rot_mat = cv::getRotationMatrix2D(box.center, angle, 1);
+	cv::warpAffine(sourceImage, sourceImage, rot_mat, sourceImage.size(), cv::INTER_CUBIC);
+}
+
+double hough(int userThreshold) {
 	if (debugLevel > 0) {
-		cout << "Converting to gray and blurring..." << endl;
+		cout << "Detecting skew... [thresh " << userThreshold << "]" << endl;
 	}
-	cvtColor( sourceImage, preProcImage, CV_BGR2GRAY );
-	blur( preProcImage, preProcImage, Size(3,3) );
+	Mat tmp = sourceImage.clone();
+    Canny( tmp, tmp, userThreshold, 200, 3 );
+    vector<Vec4i> lines;
+    HoughLinesP( tmp, lines, 1, CV_PI/180, 80, 30, 10 );
+    cvtColor( tmp, tmp, CV_GRAY2BGR );
+    int maxLen = 0;
+    int maxLenI = -1;
+    for( size_t i = 0; i < lines.size(); i++ )
+    {
+        //line( tmp, Point(lines[i][0], lines[i][1]), Point(lines[i][2], lines[i][3]), Scalar(0,0,255), 3, 8 );
+        int tmp = pow(lines[i][2]-lines[i][0], 2) + pow(lines[i][3]-lines[i][1], 2);
+        double len = sqrt(tmp);
+        if (debugLevel > 3) {
+        	cout << i << ") " << len << endl;
+        }
+        if (len > maxLen) {
+        	maxLen = len;
+        	maxLenI = i;
+        }
+    }
+    line( tmp, Point(lines[maxLenI][0], lines[maxLenI][1]), Point(lines[maxLenI][2], lines[maxLenI][3]), Scalar(0,0,255), 3, 8 );
+
+    int refY = -1;
+    if (lines[maxLenI][3] > lines[maxLenI][1]) {
+    	refY = lines[maxLenI][3];
+    }else{
+    	refY = lines[maxLenI][1];
+    }
+    line( tmp, Point(lines[maxLenI][0], refY), Point(lines[maxLenI][2], refY), Scalar(0,255,0), 3, 8 );
+    float dx21 = lines[maxLenI][2]-lines[maxLenI][0];
+    float dx31 = lines[maxLenI][2]-lines[maxLenI][0];
+    float dy21 = lines[maxLenI][3]-lines[maxLenI][1];
+    float dy31 = 0;
+    float m12 = sqrt( dx21*dx21 + dy21*dy21 );
+    float m13 = sqrt( dx31*dx31 + dy31*dy31 );
+    double theta = acos( (dx21*dx31 + dy21*dy31) / (m12 * m13) ) * 180 / CV_PI;
+	if (debugLevel > 2) {
+		namedWindow("tmp", CV_WINDOW_AUTOSIZE);
+		imshow("tmp", tmp);
+		waitKey(0);
+	}
+    return theta;
+}
+
+void posterize() {
+	if (debugLevel > 0) {
+		cout << "Posterizing..." << endl;
+	}
+	int area = preProcImage.cols * preProcImage.rows;
+	Mat p = Mat::zeros(area, 5, CV_32F);
+    Mat bestLabels, centers, clustered;
+    vector<Mat> bgr;
+    cv::split(preProcImage, bgr);
+    // i think there is a better way to split pixel bgr color
+    for(int i=0; i < area; i++) {
+        p.at<float>(i,0) = (i/preProcImage.cols) / preProcImage.rows;
+        p.at<float>(i,1) = (i%preProcImage.cols) / preProcImage.cols;
+        p.at<float>(i,2) = bgr[0].data[i] / 255.0;
+        p.at<float>(i,3) = bgr[1].data[i] / 255.0;
+        p.at<float>(i,4) = bgr[2].data[i] / 255.0;
+    }
+    int K = 8;
+    cv::kmeans(p, K, bestLabels,
+            TermCriteria( CV_TERMCRIT_EPS+CV_TERMCRIT_ITER, 10, 1.0),
+            3, KMEANS_PP_CENTERS, centers);
+
+    int colors[K];
+    for(int i=0; i<K; i++) {
+        colors[i] = 255/(i+1);
+    }
+    // i think there is a better way to do this mayebe some Mat::reshape?
+    clustered = Mat(preProcImage.rows, preProcImage.cols, CV_32F);
+    for(int i=0; i<area; i++) {
+        clustered.at<float>(i/preProcImage.cols, i%preProcImage.cols) = (float)(colors[bestLabels.at<int>(0,i)]);
+    }
+    clustered.convertTo(clustered, CV_8U);
+    preProcImage = clustered.clone();
+}
+
+void erosion(int erosion_size)
+{
+  Mat element = getStructuringElement( MORPH_ELLIPSE,
+                                       Size( 2*erosion_size + 1, 2*erosion_size+1 ),
+                                       Point( erosion_size, erosion_size ) );
+
+  /// Apply the erosion operation
+  erode( preProcImage, preProcImage, element );
+}
+
+void dilation(int dilation_size) {
+	Mat element = getStructuringElement( MORPH_ELLIPSE,
+										 Size( 2*dilation_size + 1, 2*dilation_size+1 ),
+										 Point( dilation_size, dilation_size ) );
+	/// Apply the dilation operation
+	dilate( preProcImage, preProcImage, element );
+}
+
+void preProcessImage(int userThreshold) {
+	double angle = hough(userThreshold);
+	if (debugLevel > 0) {
+		cout << "\tSkew angle :" << angle << endl;
+	}
+	//cvtColor( sourceImage, preProcImage, CV_BGR2GRAY );
+	if (angle > 0) {
+		deskew(angle);
+	}
+	blur( sourceImage, preProcImage, Size(3,3) );
+	//posterize();
+	dilation(6);
+	erosion(3);
 }
 
 vector<Vec4i>* sortValues(vector<Vec4i> *store, int nRect) {
@@ -517,23 +643,25 @@ void detectContours(int userThreshold) {
 	if (debugLevel > 1) {
 		cout << "Detecting contours..." << endl;
 	}
-	threshold( preProcImage, threshold_output, userThreshold, 255, THRESH_BINARY );
-	findContours( threshold_output, contours, hierarchy, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
+	threshold( preProcImage, threshold_output, userThreshold, 255, CV_THRESH_BINARY | CV_THRESH_OTSU );
+	findContours( threshold_output, contours, hierarchy, CV_RETR_LIST, CV_CHAIN_APPROX_NONE, Point(0, 0) );
 
 	if (debugLevel > 1) {
 		cout << "Drawing bounding rectangles..." << endl;
 	}
 	vector<vector<Point> > contours_poly( contours.size() );
-	contImage = Mat::zeros( threshold_output.size(), CV_8UC3 );
 	postProcImage = preProcImage.clone();
 
 	boundRect = new vector<Rect>(contours.size());
+	mergedRect = new vector<Rect>();
 	for( int i = 0; i < contours.size(); i++ ) {
 		approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
-		boundRect->push_back(boundingRect( Mat(contours_poly[i])));
-		Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
-		rectangle( contImage, boundRect->at(i).tl(), boundRect->at(i).br(), color, 2, 8, 0 );
-		rectangle( postProcImage, boundRect->at(i).tl(), boundRect->at(i).br(), color, 2, 8, 0 );
+		Rect rect = boundingRect( Mat(contours_poly[i]));
+		boundRect->push_back(rect);
+		mergedRect->push_back(rect);
+		Scalar color = Scalar(255, 255, 255);
+		//rectangle( contImage, boundRect->at(i).tl(), boundRect->at(i).br(), color, 2, 8, 0 );
+		rectangle( preProcImage, rect.tl(), rect.br(), color, 1, 8, 0 );
 	}
 
 	if (debugLevel > 1) {
@@ -541,8 +669,176 @@ void detectContours(int userThreshold) {
 	}
 }
 
+void mergeRects() {
+	// pruning rectangles bigger than 90% of image size
+	for (int i = 0; i < mergedRect->size(); i++) {
+		int imgArea = preProcImage.rows * preProcImage.cols;
+		if (mergedRect->at(i).area() > 0.3 * imgArea) {
+			if (debugLevel > 1) {
+				cout << i << " too big !" << endl;
+			}
+			mergedRect->at(i) = Rect(0,0,0,0);
+		}
+	}
+
+	// finding rectangles with maximum distance 10px by checking vertex euclidean distance
+	mergedHierarchy = new std::map<int, vector<int> >;
+	int nMerged;
+	do {
+		nMerged = 0;
+		for( int i = 0; i < mergedRect->size(); i++ ) {
+			for( int j = 0; j < mergedRect->size(); j++ ) {
+				//cout << i << " " << j << endl;
+				if (i != j && mergedRect->at(i).area() >= 0 && mergedRect->at(j).area() >= 0) {
+					Rect a = mergedRect->at(i);
+					Rect b = mergedRect->at(j);
+					if (a.area() > 0 && b.area() > 0) {
+						Point br2 = a.br();
+						br2.y = a.tl().y;
+						Point tl2 = b.tl();
+						tl2.y = a.br().y;
+						double distH1 = cv::norm(br2 - b.tl());
+						double distH2 = cv::norm(a.br() - tl2);
+
+						Point tl3 = a.tl();
+						tl3.x = a.br().x;
+						Point br3 = b.br();
+						br3.x = b.tl().x;
+
+						double distV1 = cv::norm(tl3 - b.tl());
+						double distV2 = cv::norm(a.br() - tl3);
+
+
+						double dist = min (((distH1+distH2) / 2), ((distV1+distV2) / 2));
+
+						if (dist < 50 && dist > 0) {
+
+							int x = min(a.tl().x, b.tl().x);
+							int y = min(a.tl().y, b.tl().y);
+							int w = max(a.br().x, b.br().x) - x;
+							int h = max(a.br().y, b.br().y) - y;
+							Rect newRect = Rect(x, y, w, h);
+
+							int bigI = i;
+							int smallI = j;
+							if (b.area() > a.area()) {
+								bigI = j;
+								smallI = i;
+							}
+							if (mergedHierarchy->find(bigI) == mergedHierarchy->end()) {
+								mergedHierarchy->insert(std::pair<int, vector<int> >(bigI, vector<int>()));
+							}
+							mergedRect->at(bigI) = Rect(x, y, w, h);
+							mergedRect->at(smallI) = Rect(0,0,0,0);
+							if (debugLevel > 4) {
+								cout << bigI << " - " << smallI << " dist " << dist << " H: " << ((distH1+distH2) / 2) << " V: " << ((distV1+distV2) / 2) << endl;
+							}
+							nMerged++;
+
+						}
+					}
+				}
+			}
+		}
+		if (debugLevel > 2) {
+			cout << "Merged " << nMerged << " rect" << endl;
+		}
+	}while(nMerged > 0);
+
+	// building a map of enclosed original rectangles inside merged ones
+	for (int i = 0; i < mergedRect->size(); i++) {
+		if (mergedRect->at(i).area() > 0) {
+
+			for (int j = 0; j < boundRect->size(); j++) {
+				if (i != j) {
+					if (mergedRect->at(i).contains(boundRect->at(j).tl()) &&
+							mergedRect->at(i).contains(boundRect->at(j).br())) {
+						if (debugLevel > 2) {
+							cout << i << " contains " << j << endl;
+						}
+						if (mergedHierarchy->find(i) == mergedHierarchy->end()) {
+							mergedHierarchy->insert(std::pair<int, vector<int> >(i, vector<int>()));
+							if (debugLevel > 2) {
+								cout << "Inserting pair " << i << ", " << j  << "[" << mergedHierarchy->at(i).size() << "]" << endl;
+							}
+						}
+						mergedHierarchy->at(i).push_back(j);
+					}
+				}
+			}
+
+		}
+	}
+}
+
+Rect detectContainer() {
+	// finding the rectangle with the most enclosed original rects AND the highest absolute coverage
+	int maxNRect = 0;
+	int maxArea = 0;
+	int maxNRectI = -1;
+	int maxAreaI = -1;
+	for (int i = 0; i < mergedRect->size(); i++) {
+		if (mergedHierarchy->find(i) != mergedHierarchy->end()) {
+			Rect rect = mergedRect->at(i);
+			if (rect.area() > 0 && mergedHierarchy->at(i).size() > 0) {
+				//rectangle(preProcImage, rect.tl(), rect.br(), Scalar(255,255,255), 1, 8, 0 );
+				int areas = 0;
+				for(int j = 0; j < mergedHierarchy->at(i).size(); j++) {
+					Rect rect = boundRect->at(mergedHierarchy->at(i).at(j));
+					areas += rect.area();
+				}
+
+
+				//rectangle(preProcImage, rect.tl(), rect.br(), Scalar(100,100,100), 2, 8, 0 );
+				if (rect.area() > maxArea) {
+					maxArea = areas;
+					maxAreaI = i;
+				}
+				if (mergedHierarchy->at(i).size() > maxNRect) {
+					maxNRect = mergedHierarchy->at(i).size();
+					maxNRectI = i;
+				}
+
+				double perc = 100 * areas / rect.area();
+				if (debugLevel > 2) {
+					cout << "Rectangle " << i << " has area " << rect.area() << " [" << perc << "% coverage] and " << mergedHierarchy->at(i).size() << " rectangles" << endl;
+				}
+			}
+		}
+	}
+	if (debugLevel > 1) {
+		cout << "Area " << maxAreaI << " [" << maxArea << "]  Rectangles " << maxNRectI << " [" << maxNRect << "]" << endl;
+	}
+	if (debugLevel > 1) {
+		Rect rect = mergedRect->at(maxAreaI);
+		rectangle(preProcImage, rect.tl(), rect.br(), Scalar(10,10,10), 3, 8, 0 );
+		rect = mergedRect->at(maxNRectI);
+		rectangle(preProcImage, rect.tl(), rect.br(), Scalar(100,100,100), 3, 8, 0 );
+		namedWindow("preProcImage", CV_WINDOW_AUTOSIZE);
+		imshow("preProcImage", preProcImage);
+		waitKey(0);
+	}
+	if (maxAreaI == maxNRectI) {
+		Rect rect = mergedRect->at(maxAreaI);
+		return rect;
+	}
+	Rect rect = mergedRect->at(maxNRectI);
+	return rect;
+}
+
 int analyze(int userThreshold) {
+	preProcessImage(userThreshold);
 	detectContours(userThreshold);
+	mergeRects();
+	Rect container = detectContainer();
+	if (container.area() > 0) {
+		preProcImage = sourceImage.clone();
+		blur( preProcImage(container), preProcImage, Size(3,3) );
+		erosion(2);
+		dilation(2);
+		detectContours(userThreshold);
+	}
+
 	analyzeRectangles();
 	if (boundRect->size() < 3) {
 		return(-1);
@@ -567,17 +863,16 @@ int analyze(int userThreshold) {
 	}
 	return(0);
 }
-
 /** @function main */
 int main( int argc, char** argv ) {
 	if (argc < 2) {
 		exit (-1);
 	}
-	fileName = argv[1];
-	loadImage(fileName);
-	preProcessImage();
 	userThreshold = atoi(argv[2]);
 	debugLevel = atoi(argv[3]);
+	fileName = argv[1];
+	loadImage(fileName);
+
 	if (userThreshold == -1) {
 		for (int t = 0; t <= 100; t+=10) {
 			if (debugLevel > 0) {
