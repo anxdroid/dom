@@ -1,4 +1,4 @@
-PROJECT( testmatch2 )
+PROJECT( dom )
 FIND_PACKAGE( OpenCV REQUIRED )
-ADD_EXECUTABLE( testmatch2 testmatch2.cpp RobustMatcher.cpp )
-TARGET_LINK_LIBRARIES( testmatch2 ${OpenCV_LIBS} opencv_nonfree opencv_features2d)
+ADD_EXECUTABLE( dom Domotica2.cpp)
+TARGET_LINK_LIBRARIES( dom ${OpenCV_LIBS} opencv_nonfree opencv_features2d)
